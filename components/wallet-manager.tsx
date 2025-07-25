@@ -66,13 +66,24 @@ export function WalletManager({ userId }: WalletManagerProps) {
       const response = await fetch(`/api/users/${userId}/wallets`)
       const data = await response.json()
       if (response.ok) {
-        setWallets(data.wallets)
-        if (data.wallets.length > 0) {
-          setDepositAddress(data.wallets[0].address)
+        // Ensure all wallet objects have required properties with defaults
+        const validatedWallets = (data.wallets || []).map((wallet: any) => ({
+          address: wallet.address || '',
+          balance: wallet.balance || 0,
+          network: wallet.network || 'ethereum'
+        }))
+        setWallets(validatedWallets)
+        if (validatedWallets.length > 0 && validatedWallets[0].address) {
+          setDepositAddress(validatedWallets[0].address)
         }
       }
     } catch (error) {
       console.error("Error fetching wallets:", error)
+      toast({
+        title: "Error",
+        description: "Failed to fetch wallets",
+        variant: "destructive",
+      })
     }
   }
 
@@ -81,10 +92,25 @@ export function WalletManager({ userId }: WalletManagerProps) {
       const response = await fetch(`/api/users/${userId}/wallet-transactions`)
       const data = await response.json()
       if (response.ok) {
-        setTransactions(data.transactions)
+        // Ensure all transaction objects have required properties with defaults
+        const validatedTransactions = (data.transactions || []).map((tx: any) => ({
+          txHash: tx.txHash || '',
+          amount: tx.amount || 0,
+          token: tx.token || 'ETH',
+          network: tx.network || 'ethereum',
+          status: tx.status || 'pending',
+          timestamp: tx.timestamp || new Date().toISOString(),
+          type: tx.type || 'deposit'
+        }))
+        setTransactions(validatedTransactions)
       }
     } catch (error) {
       console.error("Error fetching transactions:", error)
+      toast({
+        title: "Error",
+        description: "Failed to fetch transactions",
+        variant: "destructive",
+      })
     }
   }
 
@@ -191,23 +217,35 @@ export function WalletManager({ userId }: WalletManagerProps) {
     }
   }
 
+  const getNetworkDisplayName = (network: string) => {
+    const networkConfig = networks.find(n => n.id === network)
+    return networkConfig ? networkConfig.name : network.charAt(0).toUpperCase() + network.slice(1)
+  }
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {wallets.map((wallet) => (
-          <Card key={wallet.address}>
+        {wallets.map((wallet, index) => (
+          <Card key={wallet.address || `wallet-${index}`}>
             <CardHeader className="pb-3">
-              <CardTitle className="text-lg">{wallet.network.toUpperCase()}</CardTitle>
+              <CardTitle className="text-lg">
+                {getNetworkDisplayName(wallet.network || 'ethereum')}
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
-                <div className="text-2xl font-bold">{wallet.balance.toFixed(4)} ETH</div>
-                <div className="text-sm text-gray-500 break-all">{wallet.address}</div>
+                <div className="text-2xl font-bold">
+                  {(wallet.balance || 0).toFixed(4)} ETH
+                </div>
+                <div className="text-sm text-gray-500 break-all">
+                  {wallet.address || 'No address'}
+                </div>
                 <Button
                   variant="outline"
                   size="sm"
                   className="w-full bg-transparent"
-                  onClick={() => copyToClipboard(wallet.address)}
+                  onClick={() => copyToClipboard(wallet.address || '')}
+                  disabled={!wallet.address}
                 >
                   <Copy className="w-4 h-4 mr-2" />
                   Copy Address
@@ -376,41 +414,53 @@ export function WalletManager({ userId }: WalletManagerProps) {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {transactions.map((tx) => (
-                  <div key={tx.txHash} className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="flex items-center space-x-4">
-                      <div
-                        className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                          tx.type === "deposit" ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600"
-                        }`}
-                      >
-                        {tx.type === "deposit" ? <Download className="w-4 h-4" /> : <Upload className="w-4 h-4" />}
-                      </div>
-                      <div>
-                        <div className="font-semibold">
-                          {tx.type.charAt(0).toUpperCase() + tx.type.slice(1)} {tx.token}
-                        </div>
-                        <div className="text-sm text-gray-500">{new Date(tx.timestamp).toLocaleString()}</div>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-semibold">
-                        {tx.type === "deposit" ? "+" : "-"}
-                        {tx.amount} {tx.token}
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Badge className={getStatusColor(tx.status)}>{tx.status}</Badge>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => window.open(`https://etherscan.io/tx/${tx.txHash}`, "_blank")}
-                        >
-                          <ExternalLink className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
+                {transactions.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    No transactions found
                   </div>
-                ))}
+                ) : (
+                  transactions.map((tx, index) => (
+                    <div key={tx.txHash || `tx-${index}`} className="flex items-center justify-between p-4 border rounded-lg">
+                      <div className="flex items-center space-x-4">
+                        <div
+                          className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                            tx.type === "deposit" ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600"
+                          }`}
+                        >
+                          {tx.type === "deposit" ? <Download className="w-4 h-4" /> : <Upload className="w-4 h-4" />}
+                        </div>
+                        <div>
+                          <div className="font-semibold">
+                            {(tx.type || 'transaction').charAt(0).toUpperCase() + (tx.type || 'transaction').slice(1)} {tx.token || 'ETH'}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {tx.timestamp ? new Date(tx.timestamp).toLocaleString() : 'No timestamp'}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-semibold">
+                          {tx.type === "deposit" ? "+" : "-"}
+                          {tx.amount || 0} {tx.token || 'ETH'}
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Badge className={getStatusColor(tx.status || 'pending')}>
+                            {tx.status || 'pending'}
+                          </Badge>
+                          {tx.txHash && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => window.open(`https://etherscan.io/tx/${tx.txHash}`, "_blank")}
+                            >
+                              <ExternalLink className="w-4 h-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </CardContent>
           </Card>
